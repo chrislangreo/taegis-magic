@@ -264,14 +264,24 @@ def process_pivot_netflow(
 
     """
 
+    return _process_pivot_base_func(df, region, tenant_id, NETFLOW_TEMPLATE, NETFLOW_PIVOT_COLUMNS)
+
+def _process_pivot_base_func(
+    df: pd.DataFrame,
+    region: str,
+    tenant_id: str,
+    query_template: str,
+    pivot_columns: list[str],
+    earliest: Optional[str] = "1d"
+):
     if df.empty:
         return df
 
-    cols = [col for col in df.columns if col in NETFLOW_PIVOT_COLUMNS]
+    cols = [col for col in df.columns if col in pivot_columns]
 
     if not cols:
         log.error(
-            f"DataFrame contains none of the expected pivot columns: {NETFLOW_PIVOT_COLUMNS}"
+            f"DataFrame contains none of the expected pivot columns: {pivot_columns}"
         )
         return df
 
@@ -301,7 +311,7 @@ def process_pivot_netflow(
             f"{NETFLOW_PIVOT_COLUMNS}"
         )
 
-    template = jinja_env.get_template(NETFLOW_TEMPLATE)
+    template = jinja_env.get_template(query_template)
     service = get_service(environment=region, tenant_id=tenant_id)
     query_options = EventQueryOptions(
         timestamp_ascending=True,
@@ -328,7 +338,7 @@ def process_pivot_netflow(
         )
 
         if not query_result[0].result.rows:
-            log.debug("No results were returned from process_pivot_netflow query.")
+            log.debug("No results were returned from query.")
             return df
 
         results.extend(query_result)
@@ -349,4 +359,5 @@ def process_pivot_netflow(
         if r.result and r.result.rows
         for row in r.result.rows
     )
+
 
