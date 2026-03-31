@@ -18,10 +18,13 @@ from taegis_magic.commands.events import get_next_page
 log = logging.getLogger(__name__)
 
 jinja_env = Environment(loader=PackageLoader("taegis_magic","templates/process"))
-NETFLOW_TEMPLATE = "process_netflow_pipe.jinja"
-NETFLOW_PIVOT_COLUMNS = ["host_id", "sensor_id", "sensor_type", "sensor_tenant",  "tenant_id"]
+PROCESS_PIPE_TEMPLATE = "process_pipe_template.jinja"
+
+NETFLOW_PIVOT_COLUMNS = ["host_id", "sensor_id", "sensor_tenant", "sensor_type", "tenant_id"]
+HTTP_PIVOT_COLUMNS = ["host_id", "process_correlation_id", "resource_id", "sensor_id", "sensor_type", "tenant_id"]
 
 NETFLOW = "netflow"
+HTTP = "HTTP"
 
 CONFIG = get_config()
 if not CONFIG.has_section(QUERIES_SECTION):
@@ -118,11 +121,11 @@ def process_correlate_netflow(
     )
             
     # Retrieve netflow data that correlates with process data in batches. 
-    template = jinja_env.get_template(NETFLOW_TEMPLATE)
+    template = jinja_env.get_template(PROCESS_PIPE_TEMPLATE)
     for chunk in chunk_list(pids, 100):
         netflow_correlation_ids = [NetflowCorrelationId(part[0], part[1], part[2]) for part in (pid.split(":") for pid in chunk)]
         
-        query = template.render(netflow_correlation=netflow_correlation_ids,earliest=f"-{earliest}")
+        query = template.render(table=NETFLOW, filters=netflow_correlation_ids, earliest=f"-{earliest}")
 
         query_result = service.events.subscription.event_query(
             query=query,
@@ -146,8 +149,11 @@ def process_correlate_netflow(
             results.extend(query_result)
             next_page = get_next_page(query_result)
     
+    print("hello!")
+    print(results)
     if not results:
         log.debug("No results were returned from query.")
+        print("No results were returned from query.")
         return df
 
     netflow_df = to_dataframe(
@@ -209,8 +215,8 @@ def process_pivot_netflow(
 
     Example
     -------
-    Input DataFrame with aggregate process info include columns that are not in the static pivot list (``NETFLOW_PIVOT_COLUMNS``).
-    Only intersecting columns are turned into ``WHERE`` filters, other columns are ignored. 
+    Input DataFrame with aggregate process info include columns that are not in the static pivot list (`NETFLOW_PIVOT_COLUMNS`).
+    Only intersecting columns are turned into `WHERE` filters, other columns are ignored. 
 
     >>> import pandas as pd
     >>> input_df = pd.DataFrame({
@@ -264,16 +270,92 @@ def process_pivot_netflow(
 
     """
 
-    return _process_pivot_base_func(df, region, tenant_id, NETFLOW_TEMPLATE, NETFLOW_PIVOT_COLUMNS)
+    return _process_pivot_base_func(df, region, tenant_id, PROCESS_PIPE_TEMPLATE, NETFLOW, NETFLOW_PIVOT_COLUMNS, earliest)
+
+def process_pivot_http(
+    df: pd.DataFrame,
+    *,
+    region: str,
+    tenant_id: str,
+    earliest: Optional[str] = "1d"
+) -> pd.DataFrame:
+
+    return _process_pivot_base_func(df, region, tenant_id, PROCESS_PIPE_TEMPLATE, HTTP, HTTP_PIVOT_COLUMNS, earliest)
+
 
 def _process_pivot_base_func(
     df: pd.DataFrame,
     region: str,
     tenant_id: str,
     query_template: str,
+    table: str,
     pivot_columns: list[str],
-    earliest: Optional[str] = "1d"
-):
+    earliest: str
+) -> pd.DataFrame:
+    """Base function template for process pivot functions.
+
+    Due to the common nature of pivot functions, whose purpose is to take an input DataFrame with aggregate data and then query another table
+    with where clauses based on the columns of the input DataFrame, this base function was created. 
+
+    In this particular case, the input DataFrame contains aggregate process data. The function parses the input DataFrame and creates a list
+    of WHERE clauses based on columns that exist in both the input DataFrame and the `pivot_columns` parameter. It will then execute a query
+    against the table to "pivot" to (i.e. the `table` parameter) and the function will return whatever is returned by that query. So if a 
+    pivot function is for process -> netflow, the input DataFrame will contains aggregate process data and what is returned is raw non-aggregate
+    data from the netflow table based on the WHERE clauses. 
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing aggregate process data.
+    region : str,
+        Taegis region.
+    tenant_id : str,
+        Tenant ID to query against.
+    query_template: str,
+        Name of Jinja template for querying desired table.
+    table: str,
+        Table to generate a query against, to be injected into Jinja query template. 
+    pivot_columns: str,
+        A list of columns that are found in both the `process` table and the `table` to execute queries against. This list will determine 
+        the WHERE clauses that will get generated when executing the query against the `table parameter`.
+    earliest : str,
+        Date filter to apply when querying against netflow events. Based on Taegis Query language. A "-" will be prepended to whatever value is provided. 
+    
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame of raw netflow event rows matching the aggregate filters.
+
+
+    Example
+    -------
+
+    The following example if for a process -> netflow pivot function. The example demonstrates what the input DataFrame is expected to look like,
+    what `pivot_columns` parameter may look like, and then shows what kind of query the function will execute based on the contents of the input DataFrame. 
+
+    >>> input_df
+                                    host_id      sensor_type non_matching_column  count
+    0  550e8400-e29b-41d4-a716-446655440001  ENDPOINT_SOPHOS               alpha    100
+    1  550e8400-e29b-41d4-a716-446655440002  ENDPOINT_TAEGIS                beta    200
+    2  550e8400-e29b-41d4-a716-446655440003         FIREWALL               gamma     50
+    >>> # Example value of `pivot_columns` parameter
+    >>> pivot_columns
+
+    ["host_id", "sensor_type"]
+
+    -------------------------------------------------------------------------------------------------------
+    For the `input_df` dataframe above, the generated query would look like:
+
+        FROM netflow
+        WHERE
+            (host_id = '550e8400-e29b-41d4-a716-446655440001' AND sensor_type = 'ENDPOINT_SOPHOS') or 
+            (host_id = '550e8400-e29b-41d4-a716-446655440002' AND sensor_type = 'ENDPOINT_TAEGIS') or 
+            (host_id = '550e8400-e29b-41d4-a716-446655440003' AND sensor_type = 'FIREWALL')
+        EARLIEST=-1d
+
+    Notice how the `non_matching_column` column is not part of the WHERE clause. The result of this query is what is returned by calling the function. 
+
+    """
     if df.empty:
         return df
 
@@ -324,9 +406,8 @@ def _process_pivot_base_func(
 
     for chunk in chunk_list(unique_sub_queries, 100):
 
-        query = template.render(netflow_correlation=chunk, earliest=f"-{earliest}")
-        log.debug(query)
-    
+        query = template.render(table=table, filters=chunk, earliest=f"-{earliest}")
+
         query_result = service.events.subscription.event_query(
             query=query,
             options=query_options,
@@ -339,7 +420,7 @@ def _process_pivot_base_func(
 
         if not query_result[0].result.rows:
             log.debug("No results were returned from query.")
-            return df
+            continue
 
         results.extend(query_result)
         next_page = get_next_page(query_result)
