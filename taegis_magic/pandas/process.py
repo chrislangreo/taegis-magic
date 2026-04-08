@@ -126,6 +126,8 @@ def process_correlate_netflow(
         netflow_correlation_ids = [NetflowCorrelationId(part[0], part[1], part[2]) for part in (pid.split(":") for pid in chunk)]
         
         query = template.render(table=NETFLOW, filters=netflow_correlation_ids, earliest=f"-{earliest}")
+        print("MUH QUERY IS")
+        print(query)
 
         query_result = service.events.subscription.event_query(
             query=query,

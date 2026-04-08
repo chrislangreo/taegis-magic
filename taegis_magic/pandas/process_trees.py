@@ -116,7 +116,7 @@ def lookup_children(
     df = df.copy()
     if df.empty:
         return df
-
+        
     required_cols = ["host_id", "process_correlation_id", "resource_id"]
     if not all(x in df.columns for x in required_cols):
         raise ValueError(

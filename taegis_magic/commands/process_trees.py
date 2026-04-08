@@ -113,6 +113,7 @@ def process_children(
             next_token=next_token,
         )
 
+        print(f"I'm in process_children bro!\nresults={results}\nresults.process_list={results.process_list}")
         all_results.extend(results.process_list)
         next_token = results.next_token
         if not next_token:
