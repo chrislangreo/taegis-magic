@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import shlex
+import uuid
 from argparse import ArgumentError, ArgumentParser
 from pathlib import Path
 from textwrap import dedent
@@ -31,7 +32,8 @@ from taegis_sdk_python.config import get_config
 from taegis_magic.commands.configure import QUERIES_SECTION, DisableReturnDisplay
 
 log = logging.getLogger(__name__)
-
+# Name to give notebook if it has not yet been saved when using --cache flag
+temp_nb_name = str(uuid.uuid4()) + ".ipynb"
 
 def taegis_magics_command_parser() -> ArgumentParser:
     """Magics support flags."""
@@ -127,6 +129,9 @@ class TaegisMagics(Magics):
         command_args = None
         notebook_filename = None
 
+        log.warning(f"line is {line}")
+        log.warning(f"cell is {cell}")
+
         args = shlex.split(line)
         parser = taegis_magics_command_parser()
 
@@ -174,7 +179,9 @@ class TaegisMagics(Magics):
             ):
                 notebook_filename = self.shell.user_ns["TAEGIS_MAGIC_NOTEBOOK_FILENAME"]
             else:
-                notebook_filename = input("Notebook Filename:")
+                # notebook_filename = input("Notebook Filename:")
+                notebook_filename = "output.ipynb"
+                # save_notebook()
 
             if not notebook_filename:
                 raise ValueError("Cannot determine file name of notebook...")
@@ -193,8 +200,10 @@ class TaegisMagics(Magics):
                 cell = ""
 
             cache_digest = hashlib.sha256(bytes(line + cell, "utf-8")).hexdigest()
+            print(f"cache_digest is {cache_digest}")
             cache = get_cache_item(notebook_fp, magic_args.assign, cache_digest)
             if cache:
+                print("cache hit")
                 log.info(f"{magic_args.assign} found in cache...")
                 log.debug("normalizing results...")
                 data = decode_base64_obj_as_pickle(cache.get("data"))
@@ -209,6 +218,9 @@ class TaegisMagics(Magics):
                 save_notebook()
 
                 return
+            else: 
+                print("cache miss")
+            
 
             log.info(f"{magic_args.assign} not found in cache...")
 
