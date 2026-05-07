@@ -129,8 +129,8 @@ class TaegisMagics(Magics):
         command_args = None
         notebook_filename = None
 
-        log.warning(f"line is {line}")
-        log.warning(f"cell is {cell}")
+        print(f"line is {repr(line)}")
+        print(f"cell is {repr(cell)}")
 
         args = shlex.split(line)
         parser = taegis_magics_command_parser()
