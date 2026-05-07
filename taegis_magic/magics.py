@@ -179,8 +179,8 @@ class TaegisMagics(Magics):
             ):
                 notebook_filename = self.shell.user_ns["TAEGIS_MAGIC_NOTEBOOK_FILENAME"]
             else:
-                # notebook_filename = input("Notebook Filename:")
-                notebook_filename = "output.ipynb"
+                notebook_filename = input("Notebook Filename:")
+                # notebook_filename = "output.ipynb"
                 # save_notebook()
 
             if not notebook_filename:
