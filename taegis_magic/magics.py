@@ -146,6 +146,7 @@ class TaegisMagics(Magics):
                 cell = ""
 
             cache_digest = hashlib.sha256(bytes(line + cell, "utf-8")).hexdigest()
+            print(cache_digest)
             cache = get_cache_item(notebook_fp, magic_args.assign, cache_digest)
             if cache:
                 log.info(f"{magic_args.assign} found in cache...")
