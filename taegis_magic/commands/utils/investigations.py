@@ -3,15 +3,15 @@
 import logging
 import operator
 import sqlite3
-from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from functools import reduce
 from textwrap import dedent
-from typing import Any, Dict, Hashable, List, Optional, Union
+from typing import List, Optional
 
 import pandas as pd
 from dataclasses_json import dataclass_json
+from taegis_magic.commands.utils._database import find_database
 from taegis_magic.core.graphql.subjects import lookup_federated_subject
 from taegis_magic.core.normalizer import TaegisResultsNormalizer
 from taegis_magic.core.utils import get_tenant_id_column
@@ -83,74 +83,6 @@ class InvestigationEvidenceNormalizer(TaegisResultsNormalizer):
             | {self.raw_results.action} | {self.raw_results.evidence_type} | {self.raw_results.before} | {self.raw_results.after} | {self.raw_results.difference} |
             """
         )
-
-
-def get_notebook_namespace() -> Union[Dict[Hashable, Any], None]:
-    """Checks if the program is running within an IPython session
-    and, if so, returns the user namespace associated with the
-    current session.
-
-    Returns
-    -------
-    Union[Dict[Hashable, Any], None]
-        User namespace from the IPython session
-    """
-    from IPython.core.getipython import get_ipython
-
-    ip = get_ipython()
-    if ip:
-        return ip.user_ns
-    else:
-        return None
-
-
-def get_or_create_database(
-    database_uri: str = ":memory:",
-) -> sqlite3.Connection:
-    """Initializes the database where events, alerts, and search queries
-    are staged prior to being added to an investigation.
-
-    Parameters
-    ----------
-    database_uri : str, optional
-        Database filename or URI, by default ":memory:"
-
-    Returns
-    -------
-    sqlite3.Connection
-        Handle to the sqlite database
-    """
-    db = sqlite3.connect(database_uri)
-    with db:
-        db.execute(
-            dedent(
-                """
-                CREATE TABLE IF NOT EXISTS investigation_evidence (
-                    evidence_type TEXT,
-                    id TEXT,
-                    tenant_id TEXT,
-                    investigation_id TEXT,
-                    PRIMARY KEY (id, investigation_id)
-                ) WITHOUT ROWID;
-                """
-            )
-        )
-        db.execute(
-            dedent(
-                """
-                CREATE TABLE IF NOT EXISTS search_queries (
-                    id TEXT,
-                    tenant_id TEXT,
-                    query TEXT,
-                    results_returned INT,
-                    total_results INT,
-                    inserted_time TEXT,
-                    PRIMARY KEY (id)
-                ) WITHOUT ROWID;
-                """
-            )
-        )
-    return db
 
 
 def get_evidence_id_column(df: pd.DataFrame) -> str:
@@ -425,85 +357,6 @@ def read_database(
         return df.copy()
 
 
-def find_database(database_uri: str) -> sqlite3.Connection:
-    """Takes a database URI and attempts to connect to the database
-    either from a file path on disk or from the notebook namespace.
-
-    Parameters
-    ----------
-    database_uri : str
-        Database filename or URI, by default ":memory:"
-
-    Returns
-    -------
-    sqlite3.Connection
-        Handle to the sqlite database
-
-    Raises
-    ------
-    Exception
-        Could not establish connection to investigation input database
-    """
-    db = None
-    notebook_namespace = get_notebook_namespace()
-
-    if notebook_namespace:
-        db = notebook_namespace.get("investigation_input_db")
-    elif database_uri == ":memory:":
-        raise ValueError(
-            "Jupyter namespace not found and database URI is still ':memory:', set URI to a file path."
-        )
-
-    if not db:
-        db = get_or_create_database(database_uri)
-
-    if not isinstance(db, sqlite3.Connection):
-        raise Exception(  # pragma: no cover
-            "Could not establish connection to investigation input database"
-        )
-
-    if notebook_namespace:
-        notebook_namespace["investigation_input_db"] = db
-
-    return db
-
-
-def find_dataframe(reference: str) -> pd.DataFrame:
-    """Takes a name and attempts to return a pd.DataFrame
-    either from a file path on disk or from the notebook
-    namespace.
-
-    Parameters
-    ----------
-    reference : str
-        Name referring to the location of a DataFrame
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame to handle as investigation evidence
-
-    Raises
-    ------
-    Exception
-        Unable to find a DataFrame with the provided name
-    """
-    df = None
-    notebook_namespace = get_notebook_namespace()
-
-    if notebook_namespace:
-        df = notebook_namespace.get(reference)
-
-    if df is None:
-        with suppress(FileNotFoundError):
-            df = pd.read_json(reference)
-
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError(f"Unable to load DataFrame {reference}")
-
-    return df
-
-
 def insert_search_query(database_uri: str, normalized_results):
     """Insert a Taegis search query."""
     db = find_database(database_uri)
@@ -606,13 +459,13 @@ def lookup_assignee_id(service: GraphQLService, assignee_id: str) -> str:
         and not assignee_id.startswith("@")  # don't lookup submitted mentions
         and not assignee_id.endswith("@clients")  # don't lookup submitted clients
     ):
-        log.debug("Looking up user {assignee_id} by email...")
+        log.debug(f"Looking up user {assignee_id} by email...")
 
         # search for email in subject accessible tenants
         subject = service.subjects.query.current_subject()
         users = []
         for tenant_id in subject.role_assignment_data.assigned_tenant_ids:
-            log.debug("Looking up user {assignee_id} in {tenant_id}...")
+            log.debug(f"Looking up user {assignee_id} in {tenant_id}...")
             with service(tenant_id=tenant_id):
                 users = service.users.query.tdrusers(email=assignee_id)
                 if users:
@@ -620,11 +473,11 @@ def lookup_assignee_id(service: GraphQLService, assignee_id: str) -> str:
 
         # search for email in tenant context
         if not users:
-            log.debug("Looking up user {assignee_id} in {service.tenant_id}...")
+            log.debug(f"Looking up user {assignee_id} in {service.tenant_id}...")
             users = service.users.query.tdrusers(email=assignee_id)
 
         if users:
-            log.debug("User {assignee_id} found. Using ID: {users[0].id}")
+            log.debug(f"User {assignee_id} found. Using ID: {users[0].id}")
             assignee_id = users[0].id
 
             if not assignee_id:
