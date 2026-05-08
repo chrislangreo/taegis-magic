@@ -21,7 +21,6 @@ from taegis_magic.commands import (
     search,
     subjects,
     tenants,
-    threat,
     users,
 )
 from taegis_magic.core.normalizer import TaegisResult
@@ -57,7 +56,6 @@ app.add_typer(rules.app, name="rules")
 app.add_typer(search.app, name="search")
 app.add_typer(subjects.app, name="subjects")
 app.add_typer(tenants.app, name="tenants")
-app.add_typer(threat.app, name="threat")
 app.add_typer(users.app, name="users")
 
 
