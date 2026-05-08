@@ -258,6 +258,8 @@ class TaegisMagics(Magics):
                     cell = ""
 
                 cache_digest = hashlib.sha256(bytes(line + cell, "utf-8")).hexdigest()
+                print(f"line is {line}")
+                print(f"cell is {cell}")
                 print(f"This is v2026.05.07. Cache digest is {cache_digest}")
                 cache = get_cache_item(notebook_fp, magic_args.assign, cache_digest)
                 if cache:
