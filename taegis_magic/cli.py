@@ -20,7 +20,6 @@ from taegis_magic.commands import (
     rules,
     search,
     subjects,
-    tenant_profiles,
     tenants,
     threat,
     users,
@@ -57,7 +56,6 @@ app.add_typer(preferences.app, name="preferences")
 app.add_typer(rules.app, name="rules")
 app.add_typer(search.app, name="search")
 app.add_typer(subjects.app, name="subjects")
-app.add_typer(tenant_profiles.app, name="tenant-profiles")
 app.add_typer(tenants.app, name="tenants")
 app.add_typer(threat.app, name="threat")
 app.add_typer(users.app, name="users")
